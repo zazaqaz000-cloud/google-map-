@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Suk Nee Mai Mee Ngao - ศุกร์นี้ไม่มีเหงา | รายงานด่านตรวจ & แผนที่เรียลไทม์</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts Prompt -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Leaflet CSS & JS (แผนที่ OpenStreetMap ใช้งานได้ทันทีไม่ต้องมี API Key) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    * { font-family: 'Prompt', sans-serif; }
+    .leaflet-popup-content-wrapper {
+      background: #0f172a !important;
+      color: #f8fafc !important;
+      border: 1px solid #334155 !important;
+      border-radius: 1rem !important;
+      padding: 4px !important;
+    }
+    .leaflet-popup-tip { background: #0f172a !important; }
+    @media print {
+      .no-print { display: none !important; }
+      body { background: white !important; color: black !important; }
+      #map { height: 420px !important; }
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 h-screen w-screen overflow-hidden flex flex-col select-none">
+
+  <!-- TOP HEADER -->
+  <header class="bg-slate-900/90 backdrop-blur-md border-b border-slate-800 z-30 px-4 py-3 flex items-center justify-between shrink-0 shadow-lg">
+    <div class="flex items-center gap-2.5">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-600 via-amber-500 to-indigo-600 flex items-center justify-center text-white shadow-md font-bold text-lg">
+        🚨
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <h1 class="font-bold text-sm md:text-base text-white tracking-wide">Suk Nee Mai Mee Ngao</h1>
+          <span class="px-2 py-0.5 text-xs font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30 rounded-full">
+            ศุกร์นี้ไม่มีเหงา (HTML Standalone)
+          </span>
+        </div>
+        <div class="text-[11px] text-slate-400 flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+          <span id="activeCountText" class="text-emerald-400 font-medium">กำลังโหลดจุดตรวจ...</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <button onclick="openModal('legalModal')" class="hidden sm:flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-xs font-medium text-slate-200 transition">
+        <span>⚖️</span> กฎหมาย & ค่าปรับ
+      </button>
+      <button onclick="openModal('driverModal')" class="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-600 hover:to-rose-700 text-white rounded-xl text-xs font-semibold shadow-lg transition">
+        <span>🚗</span> เมาไม่ขับ / SOS
+      </button>
+      <button onclick="window.print()" class="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-xs font-medium text-slate-200 transition">
+        <span>🖨️</span> พิมพ์ / PDF
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN AREA -->
+  <div class="flex-1 relative flex overflow-hidden">
+    <!-- SIDEBAR -->
+    <aside class="w-full sm:w-80 md:w-96 bg-slate-900/95 border-r border-slate-800 flex flex-col z-20 shrink-0">
+      <div class="p-3 border-b border-slate-800 space-y-2">
+        <input
+          type="text"
+          id="searchInput"
+          placeholder="ค้นหาถนนหรือย่าน เช่น ทองหล่อ, รัชดา..."
+          class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-rose-500"
+          oninput="handleSearch(this.value)"
+        />
+        <div class="flex gap-1 overflow-x-auto text-xs">
+          <button onclick="setFilter('all')" id="btn-filter-all" class="filter-btn px-2.5 py-1.5 rounded-lg bg-rose-600 text-white">ทั้งหมด</button>
+          <button onclick="setFilter('alcohol')" id="btn-filter-alcohol" class="filter-btn px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-300">🚨 แอลกอฮอล์</button>
+          <button onclick="setFilter('traffic')" id="btn-filter-traffic" class="filter-btn px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-300">👮 วินัยจราจร</button>
+          <button onclick="setFilter('speed')" id="btn-filter-speed" class="filter-btn px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-300">📷 ความเร็ว</button>
+        </div>
+      </div>
+
+      <div class="p-3 grid grid-cols-2 gap-2 border-b border-slate-800 bg-slate-950/40">
+        <button onclick="openModal('reportModal')" class="py-2 px-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs flex items-center justify-center gap-1.5 shadow-md">
+          <span>➕</span> แจ้งพบด่านใหม่
+        </button>
+        <button onclick="locateUser()" class="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-medium text-xs flex items-center justify-center gap-1.5">
+          <span>📍</span> ตำแหน่งฉัน
+        </button>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-3 space-y-2.5" id="checkpointList"></div>
+    </aside>
+
+    <!-- MAP -->
+    <main class="flex-1 relative w-full h-full bg-slate-950">
+      <div id="map" class="w-full h-full"></div>
+    </main>
+  </div>
+
+  <!-- MODAL: แจ้งด่านใหม่ -->
+  <div id="reportModal" class="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-5 space-y-3">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+        <h3 class="font-bold text-white text-base">🚨 แจ้งรายงานจุดตรวจใหม่</h3>
+        <button onclick="closeModal('reportModal')" class="text-slate-400 text-xl">✕</button>
+      </div>
+      <form onsubmit="handleCreateCheckpoint(event)" class="space-y-3 text-xs">
+        <div>
+          <label class="block text-slate-300 mb-1">ประเภทจุดตรวจ</label>
+          <select id="newType" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-white">
+            <option value="alcohol">🚨 ด่านตรวจวัดแอลกอฮอล์</option>
+            <option value="traffic">👮 ด่านกวดขันวินัยจราจร</option>
+            <option value="speed">📷 กล้องจับความเร็ว</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-slate-300 mb-1">ชื่อถนน / สถานที่</label>
+          <input id="newRoad" required type="text" placeholder="เช่น ถ.สุขุมวิท 55, แยกอโศก" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-white" />
+        </div>
+        <div>
+          <label class="block text-slate-300 mb-1">รายละเอียด</label>
+          <input id="newDetails" type="text" placeholder="เช่น บีบเหลือเลนขวา เรียกเป่าทุกคัน" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-white" />
+        </div>
+        <div class="flex gap-2 pt-2">
+          <button type="button" onclick="closeModal('reportModal')" class="w-1/2 py-2.5 bg-slate-800 text-slate-300 rounded-xl">ยกเลิก</button>
+          <button type="submit" class="w-1/2 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-bold">บันทึก</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: กฎหมาย -->
+  <div id="legalModal" class="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-5 space-y-3 text-xs">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+        <h3 class="font-bold text-white text-base">⚖️ เกณฑ์กฎหมายเมาแล้วขับ</h3>
+        <button onclick="closeModal('legalModal')" class="text-slate-400 text-xl">✕</button>
+      </div>
+      <div class="p-3 bg-rose-950/40 border border-rose-900/50 rounded-xl space-y-1">
+        <p>• บุคคลทั่วไป: <strong>เกิน 50 mg%</strong> ถือว่าเมาสุรา</p>
+        <p>• อายุต่ำกว่า 20 ปี หรือใบขับขี่ชั่วคราว: <strong>เกิน 20 mg%</strong> ถือว่าเมาสุรา</p>
+        <p>• <strong>ปฏิเสธการเป่า</strong> = สันนิษฐานว่าเมาแล้วขับทันที</p>
+      </div>
+      <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+        <p>• จำคุกไม่เกิน 1 ปี หรือปรับ 5,000 - 20,000 บาท หรือทั้งจำทั้งปรับ</p>
+        <p>• พักใช้ใบอนุญาตขับขี่ไม่น้อยกว่า 6 เดือน</p>
+      </div>
+      <button onclick="closeModal('legalModal')" class="w-full py-2 bg-slate-800 text-slate-200 rounded-xl">ปิด</button>
+    </div>
+  </div>
+
+  <!-- MODAL: เบอร์ฉุกเฉิน -->
+  <div id="driverModal" class="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-5 space-y-3 text-xs">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+        <h3 class="font-bold text-white text-base">🚗 เมาไม่ขับ & สายด่วนฉุกเฉิน</h3>
+        <button onclick="closeModal('driverModal')" class="text-slate-400 text-xl">✕</button>
+      </div>
+      <div class="space-y-2">
+        <a href="tel:1197" class="flex justify-between p-3 bg-slate-950 rounded-xl border border-slate-800 text-white font-bold">
+          <span>ตำรวจจราจร (บก.จร.)</span> <span class="text-emerald-400">1197 📞</span>
+        </a>
+        <a href="tel:1669" class="flex justify-between p-3 bg-slate-950 rounded-xl border border-slate-800 text-white font-bold">
+          <span>กู้ชีพ / การแพทย์ฉุกเฉิน</span> <span class="text-rose-400">1669 📞</span>
+        </a>
+        <a href="tel:191" class="flex justify-between p-3 bg-slate-950 rounded-xl border border-slate-800 text-white font-bold">
+          <span>เหตุด่วนเหตุร้าย ตำรวจ</span> <span class="text-amber-400">191 📞</span>
+        </a>
+      </div>
+      <button onclick="closeModal('driverModal')" class="w-full py-2 bg-slate-800 text-slate-200 rounded-xl">ปิด</button>
+    </div>
+  </div>
+
+  <!-- SCRIPT -->
+  <script>
+    const INITIAL_DATA = [
+      { id: '1', type: 'alcohol', title: 'ด่านตรวจวัดแอลกอฮอล์ ถ.สุขุมวิท 55 (ทองหล่อ)', roadName: 'ทองหล่อ ซอย 10', coordinates: { lat: 13.7315, lng: 100.5832 }, details: 'บีบเหลือ 1 เลน เรียกเป่าทุกคัน', reportedAt: Date.now() - 600000, confirmedCount: 42, isActive: true },
+      { id: '2', type: 'alcohol', title: 'ด่านตรวจแอลกอฮอล์ ถ.รัชดาภิเษก', roadName: 'หน้า The Street รัชดา', coordinates: { lat: 13.7705, lng: 100.5732 }, details: 'ตรวจเข้ม มีรถตู้ตรวจปัสสาวะ', reportedAt: Date.now() - 1200000, confirmedCount: 58, isActive: true },
+      { id: '3', type: 'alcohol', title: 'ด่านตรวจเข้ม RCA - พระราม 9', roadName: 'ปากทางเข้า RCA', coordinates: { lat: 13.7538, lng: 100.5786 }, details: 'รถชะลอตัวหนักช่วงดึก', reportedAt: Date.now() - 900000, confirmedCount: 39, isActive: true },
+      { id: '4', type: 'speed', title: 'ด่านตรวจจับความเร็ว เกษตร-นวมินทร์', roadName: 'ตอม่อ 142', coordinates: { lat: 13.8291, lng: 100.6124 }, details: 'กล้องส่องความเร็วเลเซอร์', reportedAt: Date.now() - 1800000, confirmedCount: 23, isActive: true },
+      { id: '5', type: 'traffic', title: 'ด่านกวดขันวินัยจราจร เอกมัย', roadName: 'ปากซอยเอกมัย 12', coordinates: { lat: 13.7298, lng: 100.5878 }, details: 'ตรวจใบขับขี่และหมวกกันน็อค', reportedAt: Date.now() - 1500000, confirmedCount: 18, isActive: true }
+    ];
+
+    let checkpoints = JSON.parse(localStorage.getItem('checkpoints_html') || 'null') || INITIAL_DATA;
+    let currentFilter = 'all';
+    let searchQuery = '';
+    let map, markersLayer;
+
+    function init() {
+      map = L.map('map', { attributionControl: false }).setView([13.7563, 100.5650], 12);
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(map);
+      markersLayer = L.layerGroup().addTo(map);
+      render();
+    }
+
+    function render() {
+      markersLayer.clearLayers();
+      const filtered = checkpoints.filter(c => {
+        if (!c.isActive) return false;
+        if (currentFilter !== 'all' && c.type !== currentFilter) return false;
+        if (searchQuery && !c.title.includes(searchQuery) && !c.roadName.includes(searchQuery)) return false;
+        return true;
+      });
+
+      document.getElementById('activeCountText').innerText = `พบจุดตรวจสด ${filtered.length} จุด`;
+
+      filtered.forEach(cp => {
+        const color = cp.type === 'alcohol' ? '#f43f5e' : (cp.type === 'traffic' ? '#f59e0b' : '#3b82f6');
+        const emoji = cp.type === 'alcohol' ? '🚨' : (cp.type === 'traffic' ? '👮' : '📷');
+        const icon = L.divIcon({
+          className: 'cp-pin',
+          html: `<div style="background:${color};width:32px;height:32px;border-radius:50%;border:2px solid white;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 6px rgba(0,0,0,0.3);font-size:15px;">${emoji}</div>`,
+          iconSize: [32, 32], iconAnchor: [16, 16]
+        });
+
+        const marker = L.marker([cp.coordinates.lat, cp.coordinates.lng], { icon });
+        marker.bindPopup(`
+          <div style="font-family:Prompt;font-size:12px;min-width:180px;">
+            <b style="color:#fff;">${cp.title}</b><br>
+            <span style="color:#94a3b8;">📍 ${cp.roadName}</span><br>
+            ${cp.details ? `<small style="color:#cbd5e1;">${cp.details}</small><br>` : ''}
+            <small style="color:#10b981;">👍 ยืนยันแล้ว ${cp.confirmedCount} คน</small>
+          </div>
+        `);
+        markersLayer.addLayer(marker);
+      });
+
+      const list = document.getElementById('checkpointList');
+      list.innerHTML = filtered.map(cp => `
+        <div onclick="map.setView([${cp.coordinates.lat}, ${cp.coordinates.lng}], 15)" class="p-3 bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-xl cursor-pointer text-xs space-y-1">
+          <div class="font-bold text-white">${cp.title}</div>
+          <div class="text-slate-400">📍 ${cp.roadName}</div>
+          ${cp.details ? `<div class="text-slate-300 bg-slate-900 p-1.5 rounded text-[11px]">${cp.details}</div>` : ''}
+          <div class="text-emerald-400 font-semibold text-[11px]">👍 ยืนยัน ${cp.confirmedCount} คน</div>
+        </div>
+      `).join('');
+    }
+
+    function setFilter(type) {
+      currentFilter = type;
+      document.querySelectorAll('.filter-btn').forEach(b => {
+        b.classList.remove('bg-rose-600', 'text-white');
+        b.classList.add('bg-slate-800', 'text-slate-300');
+      });
+      document.getElementById(`btn-filter-${type}`).classList.replace('bg-slate-800', 'bg-rose-600');
+      document.getElementById(`btn-filter-${type}`).classList.replace('text-slate-300', 'text-white');
+      render();
+    }
+
+    function handleSearch(val) {
+      searchQuery = val.trim();
+      render();
+    }
+
+    function locateUser() {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(pos => {
+          map.setView([pos.coords.latitude, pos.coords.longitude], 15);
+          L.circleMarker([pos.coords.latitude, pos.coords.longitude], { radius: 8, color: '#3b82f6', fillColor: '#60a5fa', fillOpacity: 1 }).addTo(map).bindPopup('📍 ตำแหน่งคุณ').openPopup();
+        });
+      }
+    }
+
+    function handleCreateCheckpoint(e) {
+      e.preventDefault();
+      const center = map.getCenter();
+      const newCp = {
+        id: String(Date.now()),
+        type: document.getElementById('newType').value,
+        title: `จุดตรวจ ${document.getElementById('newRoad').value}`,
+        roadName: document.getElementById('newRoad').value,
+        details: document.getElementById('newDetails').value,
+        coordinates: { lat: center.lat + (Math.random() - 0.5) * 0.01, lng: center.lng + (Math.random() - 0.5) * 0.01 },
+        reportedAt: Date.now(),
+        confirmedCount: 1,
+        isActive: true
+      };
+      checkpoints.unshift(newCp);
+      localStorage.setItem('checkpoints_html', JSON.stringify(checkpoints));
+      closeModal('reportModal');
+      render();
+      map.setView([newCp.coordinates.lat, newCp.coordinates.lng], 15);
+    }
+
+    function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+    function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+    window.onload = init;
+  </script>
+</body>
+</html>
